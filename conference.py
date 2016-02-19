@@ -47,12 +47,14 @@ from settings import IOS_CLIENT_ID
 from settings import ANDROID_AUDIENCE
 
 from utils import getUserId
+import operator
 
 EMAIL_SCOPE = endpoints.EMAIL_SCOPE
 API_EXPLORER_CLIENT_ID = endpoints.API_EXPLORER_CLIENT_ID
 MEMCACHE_ANNOUNCEMENTS_KEY = "RECENT_ANNOUNCEMENTS"
 ANNOUNCEMENT_TPL = ('Last chance to attend! The following conferences '
                     'are nearly sold out: %s')
+MEMCACHE_FEATURED_KEY = "FEATURED_SPEAKER"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 DEFAULTS = {
@@ -62,6 +64,14 @@ DEFAULTS = {
     "topics": ["Default", "Topic"],
 }
 
+SESSION_DEFAULTS = {
+    "highlights": "highlights about the session",
+    "speaker": "Speaker name",
+    "duration": "1:00", # hour then minutes.
+    "typeOfSession": ["no", "type"],
+    "date": "2016-06-06",
+    "startTime": "12:00", # hour then minutes  in 24 hour formate (no am and pm).
+}
 OPERATORS = {
     'EQ':   '=',
             'GT':   '>',
@@ -610,11 +620,11 @@ class ConferenceApi(remote.Service):
                            websafeKey=session.key.urlsafe())
 
     def _getSessions(self, request):
-        q = Session.query()
         if hasattr(request, 'websafeConferenceKey'):
             conf_key = ndb.Key(urlsafe=request.websafeConferenceKey)
-            conf_id = conf_key.id()
-            q = q.filter(Session.conferenceId == conf_id)
+            q = Session.query(ancestor =conf_key)
+        else:
+            q = Session.query()
         if hasattr(request, 'typeOfSession'):
             q = q.filter(Session.typeOfSession == request.typeOfSession)
         if hasattr(request, 'speaker'):
@@ -646,7 +656,7 @@ class ConferenceApi(remote.Service):
         """get sessions in a conference"""
         return self._getSessions(request)
 
-    @endpoints.method(SESS_POST_REQUEST, SessionForm,
+    @endpoints.method(SESS_POST_REQUEST, BooleanMessage,
                       path='conference/create_session/{websafeConferenceKey}',
                       http_method='POST', name='createSession')
     def createSession(self, request):
@@ -663,13 +673,18 @@ class ConferenceApi(remote.Service):
         # # copy SessionForm/ProtoRPC Message into dict
         data = {field.name: getattr(request, field.name)
                 for field in request.all_fields()}
+
+        for df in SESSION_DEFAULTS:
+            if data[df] in (None, []):
+                data[df] = SESSION_DEFAULTS[df]
+                #setattr(request, df, DEFAULTS[df])
         del data['websafeConferenceKey']
+        del data['websafeKey']
 
         # TODO set defaults
         if data['date']:
             data['date'] = datetime.strptime(
                 data['date'][:10], "%Y-%m-%d").date()
-
         if data['startTime']:
             data['startTime'] = datetime.strptime(
                 data['startTime'], "%H:%M").time()
@@ -683,14 +698,8 @@ class ConferenceApi(remote.Service):
         data['key'] = session_key
         data['conferenceId'] = conf_key.id()
         Session(**data).put()
-        return SessionForm(sessionName=data['sessionName'],
-                           highlights=data['highlights'],
-                           speaker=data['speaker'],
-                           duration=str(data['duration']),
-                           typeOfSession=data['typeOfSession'],
-                           date=str(data['date']),
-                           startTime=str(data['startTime']),
-                           conferenceId=data['conferenceId'])
+        taskqueue.add(url='/tasks/featured_speaker')
+        return BooleanMessage(data = True)
 
     @endpoints.method(WISHLIST_POST_REQUEST, BooleanMessage,
                       path='conference/sessions/add_to_user/{websafeSessionKey}',
@@ -760,15 +769,49 @@ class ConferenceApi(remote.Service):
         path='sessions/type_time',
         http_method='GET', name='getSessionsByTypeAndTime')
     def getSessionsByTypeAndTime(self, request):
-        """Return sessions by it's type and start time"""
+        """Return sessions by it's type and less than start time"""
         return self._getSessions(request)
-        # return self._getSessionsByTime(request)
+
+    @endpoints.method(SESS_GET_REQUEST_TYPE_TIME, SessionForms,
+        path='sessions/not_type_time',
+        http_method='GET', name='getSessionsByNotTypeAndTime')
+    def getSessionsByNotTypeAndTime(self, request):
+        """Return sessions by not a type and start time"""
+        return self._getSessionsByTime(request)
 
     @endpoints.method(message_types.VoidMessage, SessionForms,
         path='sessions/all',
         http_method='GET', name='getAllSessions')
     def getAllSessions(self, request):
         return self._getSessions(request)
+
+    @endpoints.method(message_types.VoidMessage, StringMessage,
+        path='speakers/featured',
+        http_method='GET', name='getFeaturedSpeakers')
+    def getFeaturedSpeaker(self, request):
+        return StringMessage(data=memcache.get(MEMCACHE_FEATURED_KEY) or "")
+
+    @staticmethod
+    def _cacheFeaturedSpeaker():
+        """Create featured speaker and save it in memcache
+        """
+        speakers={}
+        q = Session.query()
+        for session in q:
+            if session.speaker in speakers:
+                speakers[session.speaker] = speakers[session.speaker]+1
+            else:
+                speakers[session.speaker] = 1
+
+        featured_speakers = sorted(speakers.items(), key=operator.itemgetter(1), reverse=True)
+        if featured_speakers[0][0]:
+            featured = "Featued Speaker is "+featured_speakers[0][0]
+            logging.info(featured)
+            memcache.set(MEMCACHE_FEATURED_KEY, featured)
+        else:
+            featured = ""
+            memcache.delete(MEMCACHE_FEATURED_KEY)
+        return featured
 
 
 api = endpoints.api_server([ConferenceApi])  # register API
