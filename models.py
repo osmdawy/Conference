@@ -27,7 +27,7 @@ class Session(ndb.Model):
     typeOfSession = ndb.StringProperty(repeated=True)
     date = ndb.DateProperty()
     startTime = ndb.TimeProperty()
-    conferenceId = ndb.StringProperty()
+    conferenceId = ndb.IntegerProperty()
 
 class SessionForm(messages.Message):
     """ SessionForm -- to set session properties"""
@@ -38,7 +38,11 @@ class SessionForm(messages.Message):
     typeOfSession = messages.StringField(5, repeated=True)
     date = messages.StringField(6)
     startTime = messages.StringField(7)
-    conferenceId = messages.StringField(8)
+    conferenceId = messages.IntegerField(8)
+    websafeKey = messages.StringField(9)
+
+class SessionForms(messages.Message):
+    items = messages.MessageField(SessionForm, 1, repeated=True)
 
 class ConflictException(endpoints.ServiceException):
     """ConflictException -- exception mapped to HTTP 409 response"""
@@ -50,6 +54,7 @@ class Profile(ndb.Model):
     mainEmail = ndb.StringProperty()
     teeShirtSize = ndb.StringProperty(default='NOT_SPECIFIED')
     conferenceKeysToAttend = ndb.StringProperty(repeated=True)
+    sessionKeysWishlist =  ndb.StringProperty(repeated=True)
 
 class ProfileMiniForm(messages.Message):
     """ProfileMiniForm -- update Profile form message"""
@@ -62,6 +67,7 @@ class ProfileForm(messages.Message):
     mainEmail = messages.StringField(2)
     teeShirtSize = messages.EnumField('TeeShirtSize', 3)
     conferenceKeysToAttend = messages.StringField(4, repeated=True)
+    sessionKeysWishlist =  messages.StringField(5, repeated=True)
 
 class StringMessage(messages.Message):
     """StringMessage-- outbound (single) string message"""
