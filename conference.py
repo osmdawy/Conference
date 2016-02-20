@@ -67,10 +67,11 @@ DEFAULTS = {
 SESSION_DEFAULTS = {
     "highlights": "highlights about the session",
     "speaker": "Speaker name",
-    "duration": "1:00", # hour then minutes.
+    "duration": "1:00",  # hour then minutes.
     "typeOfSession": ["no", "type"],
     "date": "2016-06-06",
-    "startTime": "12:00", # hour then minutes  in 24 hour formate (no am and pm).
+    # hour then minutes  in 24 hour formate (no am and pm).
+    "startTime": "12:00",
 }
 OPERATORS = {
     'EQ':   '=',
@@ -109,12 +110,12 @@ SESS_GET_REQUEST = endpoints.ResourceContainer(
 
 SESS_GET_REQUEST_TYPE = endpoints.ResourceContainer(
     websafeConferenceKey=messages.StringField(1),
-    typeOfSession = messages.StringField(2),
+    typeOfSession=messages.StringField(2),
 )
 
 SESS_GET_REQUEST_SPEAKER = endpoints.ResourceContainer(
     websafeConferenceKey=messages.StringField(1),
-    speaker = messages.StringField(2),
+    speaker=messages.StringField(2),
 )
 
 WISHLIST_POST_REQUEST = endpoints.ResourceContainer(
@@ -122,8 +123,8 @@ WISHLIST_POST_REQUEST = endpoints.ResourceContainer(
 )
 
 SESS_GET_REQUEST_TYPE_TIME = endpoints.ResourceContainer(
-    typeOfSession = messages.StringField(2),
-    startTime = messages.StringField(3),
+    typeOfSession=messages.StringField(2),
+    startTime=messages.StringField(3),
 )
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -622,7 +623,7 @@ class ConferenceApi(remote.Service):
     def _getSessions(self, request):
         if hasattr(request, 'websafeConferenceKey'):
             conf_key = ndb.Key(urlsafe=request.websafeConferenceKey)
-            q = Session.query(ancestor =conf_key)
+            q = Session.query(ancestor=conf_key)
         else:
             q = Session.query()
         if hasattr(request, 'typeOfSession'):
@@ -630,11 +631,12 @@ class ConferenceApi(remote.Service):
         if hasattr(request, 'speaker'):
             q = q.filter(Session.speaker == request.speaker)
         if hasattr(request, 'startTime'):
-            startTime = datetime.strptime(request.startTime, "%H:%M").time()
+            startTime = datetime.strptime(
+                request.startTime, "%H:%M").time()
             q = q.filter(Session.startTime <= startTime)
         return SessionForms(
             items=[self._copySessionToForm(session) for session in q]
-            )
+        )
 
     def _getSessionsByTime(self, request):
         q = Session.query()
@@ -646,8 +648,9 @@ class ConferenceApi(remote.Service):
             if session.startTime <= startTime:
                 sessions.append(session)
         return SessionForms(
-            items=[self._copySessionToForm(session) for session in sessions]
-            )
+            items=[self._copySessionToForm(session)
+                   for session in sessions]
+        )
 
     @endpoints.method(SESS_GET_REQUEST, SessionForms,
                       path='conference/sessions/{websafeConferenceKey}',
@@ -677,7 +680,7 @@ class ConferenceApi(remote.Service):
         for df in SESSION_DEFAULTS:
             if data[df] in (None, []):
                 data[df] = SESSION_DEFAULTS[df]
-                #setattr(request, df, DEFAULTS[df])
+                # setattr(request, df, DEFAULTS[df])
         del data['websafeConferenceKey']
         del data['websafeKey']
 
@@ -699,7 +702,7 @@ class ConferenceApi(remote.Service):
         data['conferenceId'] = conf_key.id()
         Session(**data).put()
         taskqueue.add(url='/tasks/featured_speaker')
-        return BooleanMessage(data = True)
+        return BooleanMessage(data=True)
 
     @endpoints.method(WISHLIST_POST_REQUEST, BooleanMessage,
                       path='conference/sessions/add_to_user/{websafeSessionKey}',
@@ -710,7 +713,8 @@ class ConferenceApi(remote.Service):
 
     @endpoints.method(WISHLIST_POST_REQUEST, BooleanMessage,
                       path='conference/sessions/delete_from_user/{websafeSessionKey}',
-                      http_method='DELETE', name='deleteSessionFromUserWishlist')
+                      http_method='DELETE',
+                      name='deleteSessionFromUserWishlist')
     def deleteSessionFromUserWishlist(self, request):
         """delete certain session from user wishlist"""
         return self._sessionWishList(request, False)
@@ -729,7 +733,7 @@ class ConferenceApi(remote.Service):
 
         # add
         if add:
-            # check if user already has the session 
+            # check if user already has the session
             if wssk in prof.sessionKeysWishlist:
                 raise ConflictException(
                     "You have already this session in your wishlist")
@@ -759,43 +763,45 @@ class ConferenceApi(remote.Service):
         """Return sessions in user wishlist"""
         prof = self._getProfileFromUser()  # get user Profile
         session_keys = [ndb.Key(urlsafe=wssk)
-                     for wssk in prof.sessionKeysWishlist]
+                        for wssk in prof.sessionKeysWishlist]
         sessions = ndb.get_multi(session_keys)
         return SessionForms(items=[self._copySessionToForm(session)
-                                      for session in sessions]
-                               )
+                                   for session in sessions]
+                            )
 
     @endpoints.method(SESS_GET_REQUEST_TYPE_TIME, SessionForms,
-        path='sessions/type_time',
-        http_method='GET', name='getSessionsByTypeAndTime')
+                      path='sessions/type_time',
+                      http_method='GET', name='getSessionsByTypeAndTime')
     def getSessionsByTypeAndTime(self, request):
         """Return sessions by it's type and less than start time"""
         return self._getSessions(request)
 
     @endpoints.method(SESS_GET_REQUEST_TYPE_TIME, SessionForms,
-        path='sessions/not_type_time',
-        http_method='GET', name='getSessionsByNotTypeAndTime')
+                      path='sessions/not_type_time',
+                      http_method='GET', name='getSessionsByNotTypeAndTime')
     def getSessionsByNotTypeAndTime(self, request):
         """Return sessions by not a type and start time"""
         return self._getSessionsByTime(request)
 
     @endpoints.method(message_types.VoidMessage, SessionForms,
-        path='sessions/all',
-        http_method='GET', name='getAllSessions')
+                      path='sessions/all',
+                      http_method='GET', name='getAllSessions')
     def getAllSessions(self, request):
+        """Return all sessions created"""
         return self._getSessions(request)
 
     @endpoints.method(message_types.VoidMessage, StringMessage,
-        path='speakers/featured',
-        http_method='GET', name='getFeaturedSpeakers')
+                      path='speakers/featured',
+                      http_method='GET', name='getFeaturedSpeakers')
     def getFeaturedSpeaker(self, request):
+        """Return the speaker with the maximum number of sessions"""
         return StringMessage(data=memcache.get(MEMCACHE_FEATURED_KEY) or "")
 
     @staticmethod
     def _cacheFeaturedSpeaker():
-        """Create featured speaker and save it in memcache
+        """Determine featured speaker and save it in memcache
         """
-        speakers={}
+        speakers = {}
         q = Session.query()
         for session in q:
             if session.speaker in speakers:
@@ -803,7 +809,8 @@ class ConferenceApi(remote.Service):
             else:
                 speakers[session.speaker] = 1
 
-        featured_speakers = sorted(speakers.items(), key=operator.itemgetter(1), reverse=True)
+        featured_speakers = sorted(
+            speakers.items(), key=operator.itemgetter(1), reverse=True)
         if featured_speakers[0][0]:
             featured = "Featued Speaker is "+featured_speakers[0][0]
             logging.info(featured)
