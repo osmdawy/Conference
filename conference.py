@@ -701,7 +701,7 @@ class ConferenceApi(remote.Service):
         data['key'] = session_key
         data['conferenceId'] = conf_key.id()
         Session(**data).put()
-        taskqueue.add(url='/tasks/featured_speaker')
+        taskqueue.add(url='/tasks/featured_speaker',  params={'conference_key': request.websafeConferenceKey})
         return BooleanMessage(data=True)
 
     @endpoints.method(WISHLIST_POST_REQUEST, BooleanMessage,
@@ -798,21 +798,23 @@ class ConferenceApi(remote.Service):
         return StringMessage(data=memcache.get(MEMCACHE_FEATURED_KEY) or "")
 
     @staticmethod
-    def _cacheFeaturedSpeaker():
+    def _cacheFeaturedSpeaker(conference_key):
         """Determine featured speaker and save it in memcache
         """
         speakers = {}
-        q = Session.query()
+        conf_key = ndb.Key(urlsafe=conference_key)
+        q = Session.query(ancestor=conf_key)
+        featured_speaker = ""
         for session in q:
             if session.speaker in speakers:
-                speakers[session.speaker] = speakers[session.speaker]+1
+                speakers[session.speaker] = speakers[session.speaker]+", "+session.sessionName
+                featured_speaker = session.speaker
             else:
-                speakers[session.speaker] = 1
+                speakers[session.speaker] = session.sessionName
 
-        featured_speakers = sorted(
-            speakers.items(), key=operator.itemgetter(1), reverse=True)
-        if featured_speakers[0][0]:
-            featured = "Featued Speaker is "+featured_speakers[0][0]
+        if featured_speaker:
+            sessions = speakers[featured_speaker]
+            featured = "Featued Speaker is "+featured_speaker+" and his/her sessions "+sessions
             logging.info(featured)
             memcache.set(MEMCACHE_FEATURED_KEY, featured)
         else:

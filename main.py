@@ -39,7 +39,8 @@ class SendConfirmationEmailHandler(webapp2.RequestHandler):
 
 class checkFeaturedSpeakerHandler(webapp2.RequestHandler):
     def post(self):
-        ConferenceApi._cacheFeaturedSpeaker()
+        conference_key = self.request.get('conference_key')
+        ConferenceApi._cacheFeaturedSpeaker(conference_key)
         self.response.set_status(204)
 
 app = webapp2.WSGIApplication([
