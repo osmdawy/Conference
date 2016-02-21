@@ -37,6 +37,7 @@ Session is a set of properties as required.
 - for date I used date property because it's clearly refer to a date.
 - for start time I used timeProperty to refer to hours and minutes.
 - for conferenceId it's Integer so I used integer.
+
 ### Session Form
 - It's the same as session except for date and time property I used a string also which in _createSession is converted to its type using
 ```python
