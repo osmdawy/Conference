@@ -114,8 +114,7 @@ SESS_GET_REQUEST_TYPE = endpoints.ResourceContainer(
 )
 
 SESS_GET_REQUEST_SPEAKER = endpoints.ResourceContainer(
-    websafeConferenceKey=messages.StringField(1),
-    speaker=messages.StringField(2),
+    speaker=messages.StringField(1),
 )
 
 WISHLIST_POST_REQUEST = endpoints.ResourceContainer(
@@ -596,10 +595,10 @@ class ConferenceApi(remote.Service):
 
 # - - - Sessions - - - - - - - - -
     @endpoints.method(SESS_GET_REQUEST_SPEAKER, SessionForms,
-                      path='conference/sessions/speaker/{websafeConferenceKey}',
-                      http_method='GET', name='getConferenceSessionsBySpeaker')
-    def getConferenceSessionsBySpeaker(self, request):
-        """get sessions in a conference using the speaker"""
+                      path='sessions/speaker',
+                      http_method='GET', name='getSessionsBySpeaker')
+    def getSessionsBySpeaker(self, request):
+        """get sessions using the speaker"""
         return self._getSessions(request)
 
     @endpoints.method(SESS_GET_REQUEST_TYPE, SessionForms,
@@ -669,9 +668,15 @@ class ConferenceApi(remote.Service):
     def _createSession(self, request):
         # to use later as a prent for the session
         conf_key = ndb.Key(urlsafe=request.websafeConferenceKey)
+        conf = conf_key.get()
         if not request.sessionName:
             raise endpoints.BadRequestException(
                 "Session 'name' field required")
+
+        user = endpoints.get_current_user()
+        user_id = getUserId(user)
+        if conf.organizerUserId != user_id:
+            raise endpoints.UnauthorizedException('Authorization required')
 
         # # copy SessionForm/ProtoRPC Message into dict
         data = {field.name: getattr(request, field.name)
@@ -701,7 +706,9 @@ class ConferenceApi(remote.Service):
         data['key'] = session_key
         data['conferenceId'] = conf_key.id()
         Session(**data).put()
-        taskqueue.add(url='/tasks/featured_speaker',  params={'conference_key': request.websafeConferenceKey})
+        taskqueue.add(url='/tasks/featured_speaker',
+                      params={'conference_key': request.websafeConferenceKey,
+                              'speaker_name': request.speaker})
         return BooleanMessage(data=True)
 
     @endpoints.method(WISHLIST_POST_REQUEST, BooleanMessage,
@@ -753,7 +760,6 @@ class ConferenceApi(remote.Service):
 
         # write things back to the datastore & return
         prof.put()
-        session.put()
         return BooleanMessage(data=retval)
 
     @endpoints.method(message_types.VoidMessage, SessionForms,
@@ -798,23 +804,23 @@ class ConferenceApi(remote.Service):
         return StringMessage(data=memcache.get(MEMCACHE_FEATURED_KEY) or "")
 
     @staticmethod
-    def _cacheFeaturedSpeaker(conference_key):
+    def _cacheFeaturedSpeaker(conference_key, speaker_name):
         """Determine featured speaker and save it in memcache
         """
-        speakers = {}
         conf_key = ndb.Key(urlsafe=conference_key)
         q = Session.query(ancestor=conf_key)
+        q = q.filter(Session.speaker == speaker_name)
         featured_speaker = ""
+        sessions = ""
+        count = 0
         for session in q:
-            if session.speaker in speakers:
-                speakers[session.speaker] = speakers[session.speaker]+", "+session.sessionName
-                featured_speaker = session.speaker
-            else:
-                speakers[session.speaker] = session.sessionName
-
+            sessions = sessions + ", " + session.sessionName
+            count = count+1
+        if count > 1:
+            featured_speaker = speaker_name
         if featured_speaker:
-            sessions = speakers[featured_speaker]
-            featured = "Featued Speaker is "+featured_speaker+" and his/her sessions "+sessions
+            featured = "Featued Speaker is " + featured_speaker + \
+                " and his/her sessions " + sessions
             logging.info(featured)
             memcache.set(MEMCACHE_FEATURED_KEY, featured)
         else:
