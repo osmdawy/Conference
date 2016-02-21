@@ -40,7 +40,7 @@ Session is a set of properties as required.
 ### Session Form
 - It's the same as session except for date and time property I used a string also which in _createSession is converted to its type using
 ```python
-datetime.strptime().time 
+datetime.strptime().time()
 ```
 and
 ```python
@@ -59,7 +59,7 @@ This query returns all sessions created in the database this can be very helpful
 ### Problem with provided query
 The problem with provided query is that google cloud app engine doesn't support two inequalities for different properties so to solve this I implemented this method
 ```python
-_getSessionsByTime
+_getSessionsByTime()
 ```
 which can be triggered using the endpoint
 ```python
